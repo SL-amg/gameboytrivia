@@ -8,10 +8,13 @@ import GameBoyShell from './src/components/GameBoyShell';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import PixelButton from './src/components/PixelButton';
 import HomeScreen from './src/screens/HomeScreen';
+import ModeScreen from './src/screens/ModeScreen';
 import SetupScreen from './src/screens/SetupScreen';
+import ChallengeScreen from './src/screens/ChallengeScreen';
 import GameScreen from './src/screens/GameScreen';
 import ResultScreen from './src/screens/ResultScreen';
 import { fetchQuestions, getFallbackQuestions } from './src/data/api';
+import { fetchAiQuestions } from './src/data/ai';
 import { DMG, FONT } from './src/theme';
 
 const QUESTION_COUNT = 5;
@@ -19,25 +22,30 @@ const QUESTION_COUNT = 5;
 export default function App() {
   const [fontsLoaded] = useFonts({ PressStart2P_400Regular });
 
-  const [screen, setScreen] = useState('home'); // 'home' | 'setup' | 'loading' | 'game' | 'result'
+  // 'home' | 'mode' | 'setup' | 'challenge' | 'loading' | 'error' | 'game' | 'result'
+  const [screen, setScreen] = useState('home');
   const [nickname, setNickname] = useState('PLAYER');
   const [questions, setQuestions] = useState([]);
   const [offline, setOffline] = useState(false); // true when using fallback questions
-  const [gameOpts, setGameOpts] = useState({ category: null, difficulty: null });
+  // {mode:'normal', category, difficulty} or {mode:'ai', topic}
+  const [gameOpts, setGameOpts] = useState({ mode: 'normal', category: null, difficulty: null });
   const [loadError, setLoadError] = useState('');
   const [result, setResult] = useState({ score: 0, correct: 0 });
   const [runId, setRunId] = useState(0);
 
-  // Fetch a fresh batch from OpenTDB. On failure, show the themed error
-  // screen — the player chooses to retry, play offline, or go back.
-  const loadAndStart = useCallback(async ({ category, difficulty } = {}) => {
+  // Fetch a fresh batch — from OpenTDB (normal) or OpenRouter AI (challenge).
+  // On failure, show the themed error screen.
+  const loadAndStart = useCallback(async (opts = {}) => {
     setScreen('loading');
     try {
-      const qs = await fetchQuestions({
-        amount: QUESTION_COUNT,
-        category: category ?? undefined,
-        difficulty: difficulty ?? undefined,
-      });
+      const qs =
+        opts.mode === 'ai'
+          ? await fetchAiQuestions(opts.topic)
+          : await fetchQuestions({
+              amount: QUESTION_COUNT,
+              category: opts.category ?? undefined,
+              difficulty: opts.difficulty ?? undefined,
+            });
       setQuestions(qs);
       setOffline(false);
       setRunId(Date.now());
@@ -56,17 +64,28 @@ export default function App() {
     setScreen('game');
   }, []);
 
-  // Home → setup: keep the nickname, then pick topic/difficulty.
+  // Home → mode select: keep the nickname first.
   const startGame = useCallback((name) => {
     setNickname(name || 'PLAYER');
-    setScreen('setup');
+    setScreen('mode');
   }, []);
 
   // Setup → round: remember the choices so PLAY AGAIN reuses them.
   const startRound = useCallback(
     (opts) => {
-      setGameOpts(opts);
-      loadAndStart(opts);
+      const full = { mode: 'normal', ...opts };
+      setGameOpts(full);
+      loadAndStart(full);
+    },
+    [loadAndStart]
+  );
+
+  // Challenge → round: AI-generated questions about the typed topic.
+  const startChallenge = useCallback(
+    (topic) => {
+      const full = { mode: 'ai', topic };
+      setGameOpts(full);
+      loadAndStart(full);
     },
     [loadAndStart]
   );
@@ -94,13 +113,42 @@ export default function App() {
             </View>
           ) : screen === 'home' ? (
             <HomeScreen onStart={startGame} />
+          ) : screen === 'mode' ? (
+            <ModeScreen
+              nickname={nickname}
+              onNormal={() => setScreen('setup')}
+              onChallenge={() => setScreen('challenge')}
+              onBack={goHome}
+            />
           ) : screen === 'setup' ? (
-            <SetupScreen nickname={nickname} onStart={startRound} onBack={goHome} />
+            <SetupScreen
+              nickname={nickname}
+              onStart={startRound}
+              onBack={() => setScreen('mode')}
+            />
+          ) : screen === 'challenge' ? (
+            <ChallengeScreen
+              nickname={nickname}
+              onStart={startChallenge}
+              onBack={() => setScreen('mode')}
+            />
           ) : screen === 'loading' ? (
             <View style={styles.center}>
-              <Text style={styles.loadingTitle}>DOWNLOADING</Text>
-              <Text style={styles.loadingTitle}>QUESTIONS…</Text>
-              <Text style={styles.loadingSub}>FROM OPEN TRIVIA DB</Text>
+              {gameOpts.mode === 'ai' ? (
+                <>
+                  <Text style={styles.loadingTitle}>AI IS WRITING</Text>
+                  <Text style={styles.loadingTitle}>YOUR QUIZ…</Text>
+                  <Text style={styles.loadingSub} numberOfLines={1}>
+                    TOPIC: {String(gameOpts.topic || '').toUpperCase()}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.loadingTitle}>DOWNLOADING</Text>
+                  <Text style={styles.loadingTitle}>QUESTIONS…</Text>
+                  <Text style={styles.loadingSub}>FROM OPEN TRIVIA DB</Text>
+                </>
+              )}
               <View style={styles.loadingBar}>
                 <View style={styles.loadingFill} />
               </View>
@@ -108,9 +156,13 @@ export default function App() {
           ) : screen === 'error' ? (
             <View style={styles.errorWrap}>
               <Text style={styles.errorFace}>(@_@)</Text>
-              <Text style={styles.errorTitle}>CONNECTION{'\n'}ERROR!</Text>
+              <Text style={styles.errorTitle}>
+                {gameOpts.mode === 'ai' ? 'AI TROUBLE!' : 'CONNECTION\nERROR!'}
+              </Text>
               <Text style={styles.errorMsg}>
-                COULD NOT DOWNLOAD{'\n'}QUESTIONS
+                {gameOpts.mode === 'ai'
+                  ? 'THE AI COULD NOT\nWRITE YOUR QUIZ'
+                  : 'COULD NOT DOWNLOAD\nQUESTIONS'}
               </Text>
               <View style={styles.errorBox}>
                 <Text style={styles.errorDetail} numberOfLines={3}>
@@ -134,7 +186,7 @@ export default function App() {
                 label="◀ MENU"
                 variant="outline"
                 size="sm"
-                onPress={() => setScreen('setup')}
+                onPress={() => setScreen('mode')}
                 style={styles.errorBtnSmall}
               />
             </View>
