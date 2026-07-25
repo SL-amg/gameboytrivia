@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -19,6 +19,29 @@ import { DMG, FONT } from './src/theme';
 
 const QUESTION_COUNT = 5;
 const SPARE_COUNT = 2; // extra questions powering the "Help Me" swap
+
+// Retro segmented loading bar: blocks fill left-to-right in steps, then loop.
+function LoadingBar() {
+  const SEGMENTS = 10;
+  const [step, setStep] = useState(1);
+  useEffect(() => {
+    const timer = setInterval(
+      () => setStep((s) => (s >= SEGMENTS ? 1 : s + 1)),
+      160
+    );
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <View style={styles.loadingBar}>
+      {Array.from({ length: SEGMENTS }).map((_, i) => (
+        <View
+          key={i}
+          style={[styles.loadingSeg, i < step && styles.loadingSegOn]}
+        />
+      ))}
+    </View>
+  );
+}
 
 export default function App() {
   const [fontsLoaded] = useFonts({ PressStart2P_400Regular });
@@ -159,9 +182,7 @@ export default function App() {
                   <Text style={styles.loadingSub}>FROM OPEN TRIVIA DB</Text>
                 </>
               )}
-              <View style={styles.loadingBar}>
-                <View style={styles.loadingFill} />
-              </View>
+              <LoadingBar />
             </View>
           ) : screen === 'error' ? (
             <View style={styles.errorWrap}>
@@ -260,15 +281,20 @@ const styles = StyleSheet.create({
   },
   loadingBar: {
     width: '60%',
-    height: 14,
+    height: 18,
     borderWidth: 3,
     borderColor: DMG.darkest,
     backgroundColor: DMG.light,
     marginTop: 10,
+    flexDirection: 'row',
+    padding: 2,
+    gap: 2,
   },
-  loadingFill: {
-    width: '55%',
-    height: '100%',
+  loadingSeg: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+  loadingSegOn: {
     backgroundColor: DMG.darkest,
   },
   errorWrap: {

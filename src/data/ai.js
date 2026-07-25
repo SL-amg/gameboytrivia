@@ -83,7 +83,8 @@ function normalize(items, topic) {
 }
 
 /**
- * Generate 5 questions about a free-text topic via OpenRouter.
+ * Generate questions about a free-text topic via OpenRouter.
+ * Retries once automatically — free-tier models fail transiently.
  * @throws when no API key is configured, on network/HTTP errors,
  *         or when the AI response can't be parsed into 5 valid questions.
  */
@@ -91,7 +92,15 @@ export async function fetchAiQuestions(topic) {
   if (!OPENROUTER_API_KEY) {
     throw new Error('NO API KEY SET — add it in src/data/ai.js');
   }
+  try {
+    return await requestQuestions(topic);
+  } catch (firstError) {
+    // One quiet retry; if it also fails, surface the newest error.
+    return await requestQuestions(topic);
+  }
+}
 
+async function requestQuestions(topic) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -109,6 +118,10 @@ export async function fetchAiQuestions(topic) {
         model: MODEL,
         messages: [{ role: 'user', content: buildPrompt(topic) }],
         temperature: 0.8,
+        // Plenty of room so reasoning models don't truncate mid-answer.
+        max_tokens: 4000,
+        // Keep reasoning models fast — we need JSON, not deep thought.
+        reasoning: { effort: 'low' },
       }),
     });
 
