@@ -5,15 +5,38 @@ import Avatar from '../components/Avatar';
 import PixelButton from '../components/PixelButton';
 import { POINTS_PER_CORRECT } from '../data/questions';
 
+const GAME_LENGTH = 5; // questions actually played
+const MAX_HELPS = 2; // "Help Me" swaps per game
+
 export default function GameScreen({ nickname, questions, onFinish }) {
+  // First 5 are played; anything beyond powers the "Help Me" swap.
+  const [deck, setDeck] = useState(() => questions.slice(0, GAME_LENGTH));
+  const [spares, setSpares] = useState(() => questions.slice(GAME_LENGTH));
+  const [helpLeft, setHelpLeft] = useState(MAX_HELPS);
+  const [swappedSlots, setSwappedSlots] = useState(() => new Set());
+
   const [index, setIndex] = useState(0);
   const [score, setScore] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [selected, setSelected] = useState(null); // chosen answer index
   const [locked, setLocked] = useState(false);
 
-  const q = questions[index];
-  const total = questions.length;
+  const q = deck[index];
+  const total = deck.length;
+
+  // Help Me: swap the current question for a spare.
+  // Rules: 2 per game, once per question, only before answering.
+  const canHelp =
+    !locked && helpLeft > 0 && spares.length > 0 && !swappedSlots.has(index);
+
+  function helpMe() {
+    if (!canHelp) return;
+    const [replacement, ...rest] = spares;
+    setDeck((d) => d.map((item, i) => (i === index ? replacement : item)));
+    setSpares(rest);
+    setHelpLeft((h) => h - 1);
+    setSwappedSlots((s) => new Set(s).add(index));
+  }
 
   function choose(i) {
     if (locked) return;
@@ -29,7 +52,7 @@ export default function GameScreen({ nickname, questions, onFinish }) {
   function next() {
     const isLast = index === total - 1;
     if (isLast) {
-      onFinish({ score, correct: correctCount });
+      onFinish({ score, correct: correctCount, total });
       return;
     }
     setIndex((i) => i + 1);
@@ -60,7 +83,7 @@ export default function GameScreen({ nickname, questions, onFinish }) {
           Q {index + 1}/{total}
         </Text>
         <View style={styles.progressBar}>
-          {questions.map((_, i) => (
+          {deck.map((_, i) => (
             <View
               key={i}
               style={[
@@ -91,6 +114,17 @@ export default function GameScreen({ nickname, questions, onFinish }) {
         <View style={styles.questionBox}>
           <Text style={styles.question}>{q.question}</Text>
         </View>
+
+        {canHelp && (
+          <PixelButton
+            label={`★ HELP ME — SWAP QUESTION (${helpLeft} LEFT)`}
+            variant="outline"
+            size="sm"
+            fontSize={7}
+            onPress={helpMe}
+            style={styles.helpBtn}
+          />
+        )}
 
         <View style={styles.answers}>
           {q.answers.map((a, i) => {
@@ -228,6 +262,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 18,
     color: DMG.darkest,
+  },
+  helpBtn: {
+    alignSelf: 'center',
+    minWidth: 200,
   },
   answers: {
     gap: 12,

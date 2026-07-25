@@ -32,6 +32,19 @@ export const QUESTIONS = [
     answers: ['5', '6', '7', '8'],
     correct: 2,
   },
+  // Extra entries beyond 5 serve as "Help Me" swap spares.
+  {
+    id: 6,
+    question: 'What color is an emerald?',
+    answers: ['Red', 'Blue', 'Green', 'Yellow'],
+    correct: 2,
+  },
+  {
+    id: 7,
+    question: 'How many minutes are in one hour?',
+    answers: ['30', '60', '90', '100'],
+    correct: 1,
+  },
 ];
 
 export const POINTS_PER_CORRECT = 100;

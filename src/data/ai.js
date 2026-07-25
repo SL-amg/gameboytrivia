@@ -26,9 +26,12 @@ function shuffle(arr) {
   return a;
 }
 
+// 5 are played + 2 spares for the "Help Me" question swap.
+const QUESTIONS_TO_GENERATE = 7;
+
 function buildPrompt(topic) {
   return (
-    `Generate exactly 5 multiple-choice trivia questions about: "${topic}".\n` +
+    `Generate exactly ${QUESTIONS_TO_GENERATE} multiple-choice trivia questions about: "${topic}".\n` +
     `Rules:\n` +
     `- Questions must be factual and specific to the topic.\n` +
     `- Each question has exactly one correct answer and exactly three plausible wrong answers.\n` +
@@ -53,25 +56,30 @@ function normalize(items, topic) {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error('AI returned no questions');
   }
-  return items.slice(0, 5).map((item, i) => {
-    const question = String(item.question ?? '').trim();
-    const correct = String(item.correct ?? '').trim();
-    const wrong = Array.isArray(item.wrong)
+  // Keep every well-formed question (up to 7); drop malformed ones.
+  const valid = [];
+  for (const item of items.slice(0, QUESTIONS_TO_GENERATE)) {
+    const question = String(item?.question ?? '').trim();
+    const correct = String(item?.correct ?? '').trim();
+    const wrong = Array.isArray(item?.wrong)
       ? item.wrong.map((w) => String(w).trim()).filter(Boolean)
       : [];
-    if (!question || !correct || wrong.length < 3) {
-      throw new Error(`AI question ${i + 1} was malformed`);
-    }
+    if (!question || !correct || wrong.length < 3) continue;
     const answers = shuffle([correct, ...wrong.slice(0, 3)]);
-    return {
-      id: i + 1,
+    valid.push({
+      id: valid.length + 1,
       question,
       answers,
       correct: answers.indexOf(correct),
       category: topic.toUpperCase(),
       difficulty: 'ai',
-    };
-  });
+    });
+  }
+  // Need at least a full 5-question game; spares beyond that are a bonus.
+  if (valid.length < 5) {
+    throw new Error(`AI only produced ${valid.length} usable questions`);
+  }
+  return valid;
 }
 
 /**

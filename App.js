@@ -18,6 +18,7 @@ import { fetchAiQuestions } from './src/data/ai';
 import { DMG, FONT } from './src/theme';
 
 const QUESTION_COUNT = 5;
+const SPARE_COUNT = 2; // extra questions powering the "Help Me" swap
 
 export default function App() {
   const [fontsLoaded] = useFonts({ PressStart2P_400Regular });
@@ -30,7 +31,7 @@ export default function App() {
   // {mode:'normal', category, difficulty} or {mode:'ai', topic}
   const [gameOpts, setGameOpts] = useState({ mode: 'normal', category: null, difficulty: null });
   const [loadError, setLoadError] = useState('');
-  const [result, setResult] = useState({ score: 0, correct: 0 });
+  const [result, setResult] = useState({ score: 0, correct: 0, total: QUESTION_COUNT });
   const [runId, setRunId] = useState(0);
 
   // Fetch a fresh batch — from OpenTDB (normal) or OpenRouter AI (challenge).
@@ -38,14 +39,23 @@ export default function App() {
   const loadAndStart = useCallback(async (opts = {}) => {
     setScreen('loading');
     try {
-      const qs =
-        opts.mode === 'ai'
-          ? await fetchAiQuestions(opts.topic)
-          : await fetchQuestions({
-              amount: QUESTION_COUNT,
-              category: opts.category ?? undefined,
-              difficulty: opts.difficulty ?? undefined,
-            });
+      let qs;
+      if (opts.mode === 'ai') {
+        qs = await fetchAiQuestions(opts.topic);
+      } else {
+        const params = {
+          category: opts.category ?? undefined,
+          difficulty: opts.difficulty ?? undefined,
+        };
+        try {
+          // Ask for spares too so "Help Me" swaps are instant.
+          qs = await fetchQuestions({ amount: QUESTION_COUNT + SPARE_COUNT, ...params });
+        } catch {
+          // Narrow category pools may not have 7 — a plain 5 still works
+          // (the game just won't offer swaps).
+          qs = await fetchQuestions({ amount: QUESTION_COUNT, ...params });
+        }
+      }
       setQuestions(qs);
       setOffline(false);
       setRunId(Date.now());
@@ -90,8 +100,8 @@ export default function App() {
     [loadAndStart]
   );
 
-  const finishGame = useCallback(({ score, correct }) => {
-    setResult({ score, correct });
+  const finishGame = useCallback(({ score, correct, total }) => {
+    setResult({ score, correct, total: total ?? QUESTION_COUNT });
     setScreen('result');
   }, []);
 
@@ -202,7 +212,7 @@ export default function App() {
               nickname={nickname}
               score={result.score}
               correct={result.correct}
-              total={questions.length}
+              total={result.total}
               runId={runId}
               onPlayAgain={playAgain}
               onHome={goHome}
